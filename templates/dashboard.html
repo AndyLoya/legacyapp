@@ -110,14 +110,14 @@
                         </thead>
                         <tbody>
                             {% for t in tasks %}
-                            <tr class="task-row" data-task-id="{{ t.id }}" onclick="selectTask({{ t.id }})">
+                            <tr class="task-row" data-task-id="{{ t.id }}" onclick="selectTask({{ t.id | tojson }})">
                                 <td>{{ t.id }}</td>
                                 <td>{{ t.title }}</td>
                                 <td><span class="badge badge-{{ t.status | lower | replace(' ', '-') }}">{{ t.status }}</span></td>
                                 <td>{{ t.priority }}</td>
-                                <td>{{ t.project.name if t.project_id and t.project else 'No project' }}</td>
-                                <td>{{ t.assignee.username if t.assigned_to and t.assignee else 'Unassigned' }}</td>
-                                <td>{{ t.due_date.strftime('%Y-%m-%d') if t.due_date else '—' }}</td>
+                                <td>{{ t.project_name or 'No project' }}</td>
+                                <td>{{ t.assignee_username or 'Unassigned' }}</td>
+                                <td>{{ t.due_date_str or '—' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -184,7 +184,7 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label for="comment_task_id">Task ID</label>
-                            <input type="number" id="comment_task_id" name="comment_task_id" min="1">
+                            <input type="text" id="comment_task_id" name="comment_task_id" placeholder="Paste task ID from Tasks list">
                         </div>
                     </div>
                     <div class="form-group">
@@ -211,7 +211,7 @@
                 <div class="form-grid">
                     <div class="form-group">
                         <label for="history_task_id">Task ID (optional)</label>
-                        <input type="number" id="history_task_id" name="history_task_id" min="1" placeholder="Empty = all">
+                        <input type="text" id="history_task_id" name="history_task_id" placeholder="Empty = all">
                     </div>
                 </div>
                 <div class="form-actions">

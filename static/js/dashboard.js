@@ -100,7 +100,7 @@ function submitProjectDelete() {
 }
 
 function loadComments() {
-  const taskId = parseInt(document.getElementById("comment_task_id").value, 10);
+  const taskId = document.getElementById("comment_task_id").value.trim();
   const area = document.getElementById("commentsArea");
   if (!taskId) {
     area.textContent = "Enter a task ID and click Load Comments.";
@@ -124,9 +124,9 @@ function loadComments() {
 }
 
 function loadHistory() {
-  const taskId = document.getElementById("history_task_id").value;
+  const taskId = document.getElementById("history_task_id").value.trim();
   const area = document.getElementById("historyArea");
-  const url = taskId ? API_HISTORY_TASK(parseInt(taskId, 10)) : API_HISTORY;
+  const url = taskId ? API_HISTORY_TASK(taskId) : API_HISTORY;
   fetch(url)
     .then((r) => r.json())
     .then((entries) => {

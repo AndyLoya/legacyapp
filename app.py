@@ -1,10 +1,12 @@
-"""Task Manager - Flask application."""
+"""Task Manager - Flask application (MongoDB)."""
 import os
 import csv
 import io
 from datetime import datetime, date
 from functools import wraps
 
+from bson import ObjectId
+from pymongo.errors import ServerSelectionTimeoutError
 from flask import (
     Flask,
     render_template,
@@ -17,23 +19,30 @@ from flask import (
     session,
 )
 
-from models import db, User, Project, Task, Comment, HistoryEntry, Notification
+from db import get_db, init_db
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", "sqlite:///taskmanager.db"
-)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db.init_app(app)
+
+def _oid(s):
+    """Convert string to ObjectId; return None if invalid."""
+    if not s:
+        return None
+    try:
+        return ObjectId(s)
+    except Exception:
+        return None
 
 
 def get_current_user():
-    """Current user from session."""
+    """Current user from session (MongoDB user doc with 'username' and '_id')."""
     if "user_id" not in session:
         return None
-    return User.query.get(session["user_id"])
+    uid = _oid(session["user_id"])
+    if not uid:
+        return None
+    return get_db().users.find_one({"_id": uid})
 
 
 def login_required(f):
@@ -53,24 +62,19 @@ def inject_current_user():
     return {"current_user": get_current_user()}
 
 
-def init_db():
-    """Create tables and seed initial data if missing."""
-    with app.app_context():
-        db.create_all()
-        if User.query.count() == 0:
-            for u in [
-                ("admin", "admin"),
-                ("user1", "user1"),
-                ("user2", "user2"),
-            ]:
-                db.session.add(User(username=u[0], password=u[1]))
-            for p in [
-                ("Demo Project", "Sample project"),
-                ("Alpha Project", "Main project"),
-                ("Beta Project", "Secondary project"),
-            ]:
-                db.session.add(Project(name=p[0], description=p[1]))
-            db.session.commit()
+def seed_collections():
+    """Create collections and seed initial data if empty."""
+    db = get_db()
+    if db.users.count_documents({}) == 0:
+        for u in [("admin", "admin"), ("user1", "user1"), ("user2", "user2")]:
+            db.users.insert_one({"username": u[0], "password": u[1]})
+    if db.projects.count_documents({}) == 0:
+        for p in [
+            ("Demo Project", "Sample project"),
+            ("Alpha Project", "Main project"),
+            ("Beta Project", "Secondary project"),
+        ]:
+            db.projects.insert_one({"name": p[0], "description": p[1]})
 
 
 # ---------- Auth routes ----------
@@ -82,9 +86,9 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        user = User.query.filter_by(username=username, password=password).first()
+        user = get_db().users.find_one({"username": username, "password": password})
         if user:
-            session["user_id"] = user.id
+            session["user_id"] = str(user["_id"])
             flash("Signed in successfully.", "success")
             return redirect(url_for("dashboard"))
         flash("Invalid username or password.", "error")
@@ -112,9 +116,12 @@ def index():
 @login_required
 def dashboard():
     tab = request.args.get("tab", "tasks")
-    projects = Project.query.order_by(Project.name).all()
-    users = User.query.order_by(User.username).all()
-    tasks = Task.query.all()
+    db = get_db()
+    projects_cursor = db.projects.find().sort("name", 1)
+    projects = [_doc_with_id(p) for p in projects_cursor]
+    users_cursor = db.users.find().sort("username", 1)
+    users = [_doc_with_id(u) for u in users_cursor]
+    tasks = _get_tasks_for_dashboard(db.tasks.find())
     stats = _compute_stats(tasks)
     return render_template(
         "dashboard.html",
@@ -126,18 +133,63 @@ def dashboard():
     )
 
 
+def _doc_with_id(doc):
+    """Add string 'id' to a MongoDB doc for templates."""
+    if doc is None:
+        return None
+    d = dict(doc)
+    d["id"] = str(d["_id"])
+    return d
+
+
+def _get_tasks_for_dashboard(cursor):
+    """Convert task cursor to list of dicts with id, project_name, assignee_username."""
+    db = get_db()
+    tasks = list(cursor)
+    projects_by_id = {str(p["_id"]): p for p in db.projects.find()}
+    users_by_id = {str(u["_id"]): u for u in db.users.find()}
+    out = []
+    for t in tasks:
+        tid = str(t["_id"])
+        pid = str(t["project_id"]) if t.get("project_id") else None
+        aid = str(t["assigned_to"]) if t.get("assigned_to") else None
+        dd = t.get("due_date")
+        if dd:
+            due_str = dd.strftime("%Y-%m-%d") if hasattr(dd, "strftime") else str(dd)[:10]
+        else:
+            due_str = None
+        out.append({
+            "id": tid,
+            "title": t.get("title", ""),
+            "status": t.get("status", "Pending"),
+            "priority": t.get("priority", "Medium"),
+            "project_name": projects_by_id.get(pid, {}).get("name") if pid else None,
+            "assignee_username": users_by_id.get(aid, {}).get("username") if aid else None,
+            "due_date": dd,
+            "due_date_str": due_str,
+        })
+    return out
+
+
 def _compute_stats(tasks):
     total = len(tasks)
-    completed = sum(1 for t in tasks if t.status == "Completed")
+    completed = sum(1 for t in tasks if t.get("status") == "Completed")
     pending = total - completed
-    high_priority = sum(
-        1 for t in tasks if t.priority in ("High", "Critical")
-    )
+    high_priority = sum(1 for t in tasks if t.get("priority") in ("High", "Critical"))
     overdue = 0
     today = date.today()
     for t in tasks:
-        if t.due_date and t.status != "Completed" and t.due_date < today:
-            overdue += 1
+        dd = t.get("due_date")
+        if dd and t.get("status") != "Completed":
+            if isinstance(dd, date):
+                d = dd
+            else:
+                try:
+                    d = dd.date() if hasattr(dd, "date") else datetime.fromisoformat(str(dd).replace("Z", "+00:00")).date()
+                except Exception:
+                    continue
+            if d < today:
+                overdue += 1
     return {
         "total": total,
         "completed": completed,
@@ -163,79 +215,99 @@ def task_add():
         due_date = None
     raw_project = request.form.get("task_project_id") or ""
     raw_assigned = request.form.get("task_assigned_to") or ""
-    task = Task(
-        title=title,
-        description=request.form.get("task_description", ""),
-        status=request.form.get("task_status", "Pending"),
-        priority=request.form.get("task_priority", "Medium"),
-        project_id=int(raw_project) if raw_project else None,
-        assigned_to=int(raw_assigned) if raw_assigned else None,
-        due_date=due_date,
-        estimated_hours=float(request.form.get("task_hours") or 0),
-        created_by=get_current_user().id,
-    )
-    db.session.add(task)
-    db.session.flush()
-    _add_history(task.id, "CREATED", "", task.title)
-    if task.assigned_to:
-        _add_notification(
-            task.assigned_to,
-            f"New task assigned: {task.title}",
-            "task_assigned",
-        )
-    db.session.commit()
+    project_id = _oid(raw_project)
+    assigned_to = _oid(raw_assigned)
+    user = get_current_user()
+    now = datetime.utcnow()
+    task_doc = {
+        "title": title,
+        "description": request.form.get("task_description", ""),
+        "status": request.form.get("task_status", "Pending"),
+        "priority": request.form.get("task_priority", "Medium"),
+        "project_id": project_id,
+        "assigned_to": assigned_to,
+        "due_date": due_date,
+        "estimated_hours": float(request.form.get("task_hours") or 0),
+        "actual_hours": 0,
+        "created_by": user["_id"],
+        "created_at": now,
+        "updated_at": now,
+    }
+    r = get_db().tasks.insert_one(task_doc)
+    task_id = r.inserted_id
+    _add_history(task_id, "CREATED", "", title)
+    if assigned_to:
+        _add_notification(assigned_to, f"New task assigned: {title}", "task_assigned")
     flash("Task created.", "success")
     return redirect(url_for("dashboard", tab="tasks"))
 
 
-@app.route("/task/update/<int:task_id>", methods=["POST"])
+@app.route("/task/update/<task_id>", methods=["POST"])
 @login_required
 def task_update(task_id):
-    task = Task.query.get_or_404(task_id)
+    oid = _oid(task_id)
+    if not oid:
+        flash("Invalid task.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    task = get_db().tasks.find_one({"_id": oid})
+    if not task:
+        flash("Task not found.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
     title = request.form.get("task_title", "").strip()
     if not title:
         flash("Title is required.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
-    old_status = task.status
-    old_title = task.title
     try:
         due = request.form.get("task_due_date")
         due_date = datetime.strptime(due, "%Y-%m-%d").date() if due else None
     except ValueError:
-        due_date = task.due_date
-    task.title = title
-    task.description = request.form.get("task_description", "")
-    task.status = request.form.get("task_status", "Pending")
-    task.priority = request.form.get("task_priority", "Medium")
+        due_date = task.get("due_date")
     raw_project = request.form.get("task_project_id") or ""
     raw_assigned = request.form.get("task_assigned_to") or ""
-    task.project_id = int(raw_project) if raw_project else None
-    task.assigned_to = int(raw_assigned) if raw_assigned else None
-    task.due_date = due_date
-    task.estimated_hours = float(request.form.get("task_hours") or 0)
-    if old_status != task.status:
-        _add_history(task.id, "STATUS_CHANGED", old_status, task.status)
-    if old_title != task.title:
-        _add_history(task.id, "TITLE_CHANGED", old_title, task.title)
-    if task.assigned_to:
-        _add_notification(
-            task.assigned_to,
-            f"Task updated: {task.title}",
-            "task_updated",
-        )
-    db.session.commit()
+    project_id = _oid(raw_project)
+    assigned_to = _oid(raw_assigned)
+    old_status = task.get("status")
+    old_title = task.get("title")
+    get_db().tasks.update_one(
+        {"_id": oid},
+        {
+            "$set": {
+                "title": title,
+                "description": request.form.get("task_description", ""),
+                "status": request.form.get("task_status", "Pending"),
+                "priority": request.form.get("task_priority", "Medium"),
+                "project_id": project_id,
+                "assigned_to": assigned_to,
+                "due_date": due_date,
+                "estimated_hours": float(request.form.get("task_hours") or 0),
+                "updated_at": datetime.utcnow(),
+            }
+        },
+    )
+    if old_status != request.form.get("task_status"):
+        _add_history(oid, "STATUS_CHANGED", old_status or "", request.form.get("task_status", ""))
+    if old_title != title:
+        _add_history(oid, "TITLE_CHANGED", old_title or "", title)
+    if assigned_to:
+        _add_notification(assigned_to, f"Task updated: {title}", "task_updated")
     flash("Task updated.", "success")
     return redirect(url_for("dashboard", tab="tasks"))
 
 
-@app.route("/task/delete/<int:task_id>", methods=["POST"])
+@app.route("/task/delete/<task_id>", methods=["POST"])
 @login_required
 def task_delete(task_id):
-    task = Task.query.get_or_404(task_id)
-    title = task.title
-    _add_history(task.id, "DELETED", title, "")
-    db.session.delete(task)
-    db.session.commit()
+    oid = _oid(task_id)
+    if not oid:
+        flash("Invalid task.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    task = get_db().tasks.find_one({"_id": oid})
+    if not task:
+        flash("Task not found.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    title = task.get("title", "")
+    _add_history(oid, "DELETED", title, "")
+    get_db().tasks.delete_one({"_id": oid})
     flash("Task deleted.", "success")
     return redirect(url_for("dashboard", tab="tasks"))
 
@@ -249,33 +321,45 @@ def project_add():
     if not name:
         flash("Project name is required.", "error")
         return redirect(url_for("dashboard", tab="projects"))
-    db.session.add(Project(name=name, description=request.form.get("project_description", "")))
-    db.session.commit()
+    get_db().projects.insert_one({
+        "name": name,
+        "description": request.form.get("project_description", ""),
+    })
     flash("Project created.", "success")
     return redirect(url_for("dashboard", tab="projects"))
 
 
-@app.route("/project/update/<int:project_id>", methods=["POST"])
+@app.route("/project/update/<project_id>", methods=["POST"])
 @login_required
 def project_update(project_id):
-    project = Project.query.get_or_404(project_id)
+    oid = _oid(project_id)
+    if not oid:
+        flash("Invalid project.", "error")
+        return redirect(url_for("dashboard", tab="projects"))
+    project = get_db().projects.find_one({"_id": oid})
+    if not project:
+        flash("Project not found.", "error")
+        return redirect(url_for("dashboard", tab="projects"))
     name = request.form.get("project_name", "").strip()
     if not name:
         flash("Name is required.", "error")
         return redirect(url_for("dashboard", tab="projects"))
-    project.name = name
-    project.description = request.form.get("project_description", "")
-    db.session.commit()
+    get_db().projects.update_one(
+        {"_id": oid},
+        {"$set": {"name": name, "description": request.form.get("project_description", "")}},
+    )
     flash("Project updated.", "success")
     return redirect(url_for("dashboard", tab="projects"))
 
 
-@app.route("/project/delete/<int:project_id>", methods=["POST"])
+@app.route("/project/delete/<project_id>", methods=["POST"])
 @login_required
 def project_delete(project_id):
-    project = Project.query.get_or_404(project_id)
-    db.session.delete(project)
-    db.session.commit()
+    oid = _oid(project_id)
+    if not oid:
+        flash("Invalid project.", "error")
+        return redirect(url_for("dashboard", tab="projects"))
+    get_db().projects.delete_one({"_id": oid})
     flash("Project deleted.", "success")
     return redirect(url_for("dashboard", tab="projects"))
 
@@ -286,21 +370,26 @@ def project_delete(project_id):
 @login_required
 def comment_add():
     try:
-        task_id = int(request.form.get("comment_task_id"))
-    except (TypeError, ValueError):
+        task_id = request.form.get("comment_task_id", "").strip()
+        oid = _oid(task_id)
+    except Exception:
+        oid = None
+    if not oid:
         flash("Invalid task ID.", "error")
         return redirect(url_for("dashboard", tab="comments"))
     text = request.form.get("comment_text", "").strip()
     if not text:
         flash("Comment cannot be empty.", "error")
         return redirect(url_for("dashboard", tab="comments"))
-    if not Task.query.get(task_id):
+    if not get_db().tasks.find_one({"_id": oid}):
         flash("Task not found.", "error")
         return redirect(url_for("dashboard", tab="comments"))
-    db.session.add(
-        Comment(task_id=task_id, user_id=get_current_user().id, comment_text=text)
-    )
-    db.session.commit()
+    get_db().comments.insert_one({
+        "task_id": oid,
+        "user_id": get_current_user()["_id"],
+        "comment_text": text,
+        "created_at": datetime.utcnow(),
+    })
     flash("Comment added.", "success")
     return redirect(url_for("dashboard", tab="comments"))
 
@@ -310,65 +399,81 @@ def comment_add():
 @app.route("/notifications/read", methods=["POST"])
 @login_required
 def notifications_mark_read():
-    Notification.query.filter_by(user_id=get_current_user().id).update({"read": True})
-    db.session.commit()
+    get_db().notifications.update_many(
+        {"user_id": get_current_user()["_id"]},
+        {"$set": {"read": True}},
+    )
     flash("Notifications marked as read.", "success")
     return redirect(url_for("dashboard", tab="notifications"))
 
 
-# ---------- API / datos para AJAX ----------
+# ---------- API ----------
 
-@app.route("/api/task/<int:task_id>")
+@app.route("/api/task/<task_id>")
 @login_required
 def api_task(task_id):
-    task = Task.query.get_or_404(task_id)
+    oid = _oid(task_id)
+    if not oid:
+        return jsonify({"error": "Invalid task"}), 404
+    task = get_db().tasks.find_one({"_id": oid})
+    if not task:
+        return jsonify({"error": "Not found"}), 404
+    dd = task.get("due_date")
+    due_str = ""
+    if dd:
+        due_str = dd.isoformat() if isinstance(dd, date) else str(dd)[:10]
     return jsonify({
-        "id": task.id,
-        "title": task.title,
-        "description": task.description or "",
-        "status": task.status,
-        "priority": task.priority,
-        "project_id": task.project_id or 0,
-        "assigned_to": task.assigned_to or 0,
-        "due_date": task.due_date.isoformat() if task.due_date else "",
-        "estimated_hours": task.estimated_hours,
+        "id": str(task["_id"]),
+        "title": task.get("title", ""),
+        "description": task.get("description", ""),
+        "status": task.get("status", "Pending"),
+        "priority": task.get("priority", "Medium"),
+        "project_id": str(task["project_id"]) if task.get("project_id") else "",
+        "assigned_to": str(task["assigned_to"]) if task.get("assigned_to") else "",
+        "due_date": due_str,
+        "estimated_hours": task.get("estimated_hours", 0),
     })
 
 
-@app.route("/api/comments/<int:task_id>")
+@app.route("/api/comments/<task_id>")
 @login_required
 def api_comments(task_id):
-    comments = Comment.query.filter_by(task_id=task_id).order_by(Comment.created_at).all()
-    users = {u.id: u.username for u in User.query.all()}
+    oid = _oid(task_id)
+    if not oid:
+        return jsonify([])
+    comments = list(get_db().comments.find({"task_id": oid}).sort("created_at", 1))
+    users = {u["_id"]: u["username"] for u in get_db().users.find()}
     return jsonify([
         {
-            "id": c.id,
-            "user": users.get(c.user_id, "?"),
-            "text": c.comment_text,
-            "created_at": c.created_at.isoformat(),
+            "id": str(c["_id"]),
+            "user": users.get(c["user_id"], "?"),
+            "text": c.get("comment_text", ""),
+            "created_at": c.get("created_at", datetime.utcnow()).isoformat(),
         }
         for c in comments
     ])
 
 
 @app.route("/api/history")
-@app.route("/api/history/<int:task_id>")
+@app.route("/api/history/<task_id>")
 @login_required
 def api_history(task_id=None):
-    q = HistoryEntry.query.order_by(HistoryEntry.timestamp.desc())
-    if task_id is not None:
-        q = q.filter_by(task_id=task_id)
-    entries = q.limit(100).all()
-    users = {u.id: u.username for u in User.query.all()}
+    q = {}
+    if task_id:
+        oid = _oid(task_id)
+        if oid:
+            q["task_id"] = oid
+    entries = list(get_db().history.find(q).sort("timestamp", -1).limit(100))
+    users = {u["_id"]: u["username"] for u in get_db().users.find()}
     return jsonify([
         {
-            "id": e.id,
-            "task_id": e.task_id,
-            "user": users.get(e.user_id, "?"),
-            "action": e.action,
-            "old_value": e.old_value or "",
-            "new_value": e.new_value or "",
-            "timestamp": e.timestamp.isoformat(),
+            "id": str(e["_id"]),
+            "task_id": str(e["task_id"]),
+            "user": users.get(e["user_id"], "?"),
+            "action": e.get("action", ""),
+            "old_value": e.get("old_value", ""),
+            "new_value": e.get("new_value", ""),
+            "timestamp": e.get("timestamp", datetime.utcnow()).isoformat(),
         }
         for e in entries
     ])
@@ -377,11 +482,19 @@ def api_history(task_id=None):
 @app.route("/api/notifications")
 @login_required
 def api_notifications():
-    notifs = Notification.query.filter_by(
-        user_id=get_current_user().id, read=False
-    ).order_by(Notification.created_at.desc()).all()
+    notifs = list(
+        get_db().notifications.find({
+            "user_id": get_current_user()["_id"],
+            "read": False,
+        }).sort("created_at", -1)
+    )
     return jsonify([
-        {"id": n.id, "message": n.message, "type": n.type, "created_at": n.created_at.isoformat()}
+        {
+            "id": str(n["_id"]),
+            "message": n.get("message", ""),
+            "type": n.get("type", "info"),
+            "created_at": n.get("created_at", datetime.utcnow()).isoformat(),
+        }
         for n in notifs
     ])
 
@@ -389,36 +502,31 @@ def api_notifications():
 @app.route("/api/search")
 @login_required
 def api_search():
+    q_filter = {}
     q = request.args.get("q", "").strip().lower()
-    status = request.args.get("status", "")
-    priority = request.args.get("priority", "")
-    try:
-        project_id = int(request.args.get("project_id", 0))
-    except ValueError:
-        project_id = 0
-    tasks = Task.query
     if q:
-        tasks = tasks.filter(
-            db.or_(
-                Task.title.ilike(f"%{q}%"),
-                Task.description.ilike(f"%{q}%"),
-            )
-        )
+        q_filter["$or"] = [
+            {"title": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}},
+        ]
+    status = request.args.get("status", "").strip()
     if status:
-        tasks = tasks.filter(Task.status == status)
+        q_filter["status"] = status
+    priority = request.args.get("priority", "").strip()
     if priority:
-        tasks = tasks.filter(Task.priority == priority)
+        q_filter["priority"] = priority
+    project_id = _oid(request.args.get("project_id", ""))
     if project_id:
-        tasks = tasks.filter(Task.project_id == project_id)
-    tasks = tasks.all()
-    projects = {p.id: p.name for p in Project.query.all()}
+        q_filter["project_id"] = project_id
+    tasks = list(get_db().tasks.find(q_filter))
+    projects_by_id = {str(p["_id"]): p["name"] for p in get_db().projects.find()}
     return jsonify([
         {
-            "id": t.id,
-            "title": t.title,
-            "status": t.status,
-            "priority": t.priority,
-            "project": projects.get(t.project_id) or "No project",
+            "id": str(t["_id"]),
+            "title": t.get("title", ""),
+            "status": t.get("status", "Pending"),
+            "priority": t.get("priority", "Medium"),
+            "project": projects_by_id.get(str(t.get("project_id")), "No project"),
         }
         for t in tasks
     ])
@@ -427,46 +535,47 @@ def api_search():
 @app.route("/api/report/<report_type>")
 @login_required
 def api_report(report_type):
+    from collections import Counter
+    db = get_db()
+    lines = []
     if report_type == "tasks":
-        tasks = Task.query.all()
-        from collections import Counter
-        c = Counter(t.status or "Pending" for t in tasks)
+        tasks = list(db.tasks.find())
+        c = Counter(t.get("status", "Pending") for t in tasks)
         lines = [f"{k}: {v} tasks" for k, v in c.items()]
     elif report_type == "projects":
-        projects = Project.query.all()
-        lines = []
-        for p in projects:
-            n = Task.query.filter_by(project_id=p.id).count()
-            lines.append(f"{p.name}: {n} tasks")
+        for p in db.projects.find():
+            n = db.tasks.count_documents({"project_id": p["_id"]})
+            lines.append(f"{p['name']}: {n} tasks")
     elif report_type == "users":
-        users = User.query.all()
-        lines = []
-        for u in users:
-            n = Task.query.filter_by(assigned_to=u.id).count()
-            lines.append(f"{u.username}: {n} tasks assigned")
-    else:
-        return jsonify({"lines": []})
+        for u in db.users.find():
+            n = db.tasks.count_documents({"assigned_to": u["_id"]})
+            lines.append(f"{u['username']}: {n} tasks assigned")
     return jsonify({"lines": lines})
 
 
 @app.route("/export/csv")
 @login_required
 def export_csv():
-    tasks = Task.query.all()
-    projects = {p.id: p.name for p in Project.query.all()}
-    users = {u.id: u.username for u in User.query.all()}
+    db = get_db()
+    tasks = list(db.tasks.find())
+    projects_by_id = {str(p["_id"]): p["name"] for p in db.projects.find()}
+    users_by_id = {str(u["_id"]): u["username"] for u in db.users.find()}
     output = io.StringIO()
     w = csv.writer(output)
     w.writerow(["ID", "Title", "Status", "Priority", "Project", "Assigned", "Due"])
     for t in tasks:
+        pid = str(t.get("project_id")) if t.get("project_id") else None
+        aid = str(t.get("assigned_to")) if t.get("assigned_to") else None
+        dd = t.get("due_date")
+        due_str = dd.isoformat() if isinstance(dd, date) and dd else (str(dd)[:10] if dd else "")
         w.writerow([
-            t.id,
-            t.title,
-            t.status or "Pending",
-            t.priority or "Medium",
-            projects.get(t.project_id) or "No project",
-            users.get(t.assigned_to) or "Unassigned",
-            t.due_date.isoformat() if t.due_date else "",
+            str(t["_id"]),
+            t.get("title", ""),
+            t.get("status", "Pending"),
+            t.get("priority", "Medium"),
+            projects_by_id.get(pid, "No project"),
+            users_by_id.get(aid, "Unassigned"),
+            due_str,
         ])
     output.seek(0)
     return send_file(
@@ -478,23 +587,35 @@ def export_csv():
 
 
 def _add_history(task_id, action, old_value, new_value):
-    db.session.add(
-        HistoryEntry(
-            task_id=task_id,
-            user_id=get_current_user().id,
-            action=action,
-            old_value=old_value,
-            new_value=new_value,
-        )
-    )
+    get_db().history.insert_one({
+        "task_id": task_id,
+        "user_id": get_current_user()["_id"],
+        "action": action,
+        "old_value": old_value,
+        "new_value": new_value,
+        "timestamp": datetime.utcnow(),
+    })
 
 
 def _add_notification(user_id, message, type_="info"):
-    db.session.add(
-        Notification(user_id=user_id, message=message, type=type_)
-    )
+    get_db().notifications.insert_one({
+        "user_id": user_id,
+        "message": message,
+        "type": type_,
+        "read": False,
+        "created_at": datetime.utcnow(),
+    })
 
 
 if __name__ == "__main__":
-    init_db()
+    try:
+        init_db()
+        seed_collections()
+    except ServerSelectionTimeoutError:
+        import sys
+        print("\n  Cannot connect to MongoDB.", file=sys.stderr)
+        print("  Set MONGODB_URI in your .env file or environment.", file=sys.stderr)
+        print("  Example (MongoDB Atlas): MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster.mongodb.net/taskmanager", file=sys.stderr)
+        print("  Example (local):         MONGODB_URI=mongodb://localhost:27017/taskmanager  (requires MongoDB running)\n", file=sys.stderr)
+        sys.exit(1)
     app.run(debug=True, port=5000)
