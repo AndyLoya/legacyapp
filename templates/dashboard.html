@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Task Manager{% endblock %}
+{% block content %}
+<div class="app-container">
+    <header class="app-header">
+        <div class="header-brand">Task Manager</div>
+        <div class="header-user">
+            <span class="user-name">{{ current_user.username }}</span>
+            <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
+        </div>
+    </header>
+
+    <nav class="tabs-nav">
+        <a href="{{ url_for('dashboard', tab='tasks') }}" class="tab-link {% if tab == 'tasks' %}active{% endif %}">Tasks</a>
+        <a href="{{ url_for('dashboard', tab='projects') }}" class="tab-link {% if tab == 'projects' %}active{% endif %}">Projects</a>
+        <a href="{{ url_for('dashboard', tab='comments') }}" class="tab-link {% if tab == 'comments' %}active{% endif %}">Comments</a>
+        <a href="{{ url_for('dashboard', tab='history') }}" class="tab-link {% if tab == 'history' %}active{% endif %}">History</a>
+        <a href="{{ url_for('dashboard', tab='notifications') }}" class="tab-link {% if tab == 'notifications' %}active{% endif %}">Notifications</a>
+        <a href="{{ url_for('dashboard', tab='search') }}" class="tab-link {% if tab == 'search' %}active{% endif %}">Search</a>
+        <a href="{{ url_for('dashboard', tab='reports') }}" class="tab-link {% if tab == 'reports' %}active{% endif %}">Reports</a>
+    </nav>
+
+    <main class="app-main">
+        {% if tab == 'tasks' %}
+        <section class="tab-panel active">
+            <h2>Task Management</h2>
+            <div class="card form-card">
+                <h3>New / Edit Task</h3>
+                <form method="post" action="{{ url_for('task_add') }}" id="taskForm">
+                    <input type="hidden" name="task_id" id="taskIdField" value="">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task_title">Title *</label>
+                            <input type="text" id="task_title" name="task_title" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="task_description">Description</label>
+                        <textarea id="task_description" name="task_description" rows="3"></textarea>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="task_status">Status</label>
+                            <select id="task_status" name="task_status">
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Blocked">Blocked</option>
+                                <option value="Cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task_priority">Priority</label>
+                            <select id="task_priority" name="task_priority">
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                                <option value="Critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task_project_id">Project</label>
+                            <select id="task_project_id" name="task_project_id">
+                                <option value="">No project</option>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task_assigned_to">Assigned to</label>
+                            <select id="task_assigned_to" name="task_assigned_to">
+                                <option value="">Unassigned</option>
+                                {% for u in users %}
+                                <option value="{{ u.id }}">{{ u.username }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task_due_date">Due date</label>
+                            <input type="date" id="task_due_date" name="task_due_date">
+                        </div>
+                        <div class="form-group">
+                            <label for="task_hours">Estimated hours</label>
+                            <input type="number" id="task_hours" name="task_hours" step="0.5" min="0">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="taskSubmitBtn">Add</button>
+                        <button type="button" class="btn btn-secondary" onclick="submitTaskUpdate()">Update</button>
+                        <button type="button" class="btn btn-danger" onclick="submitTaskDelete()">Delete</button>
+                        <button type="button" class="btn btn-ghost" onclick="clearTaskForm()">Clear</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card table-card">
+                <h3>Task List</h3>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Title</th>
+                                <th>Status</th>
+                                <th>Priority</th>
+                                <th>Project</th>
+                                <th>Assigned</th>
+                                <th>Due</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in tasks %}
+                            <tr class="task-row" data-task-id="{{ t.id }}" onclick="selectTask({{ t.id }})">
+                                <td>{{ t.id }}</td>
+                                <td>{{ t.title }}</td>
+                                <td><span class="badge badge-{{ t.status | lower | replace(' ', '-') }}">{{ t.status }}</span></td>
+                                <td>{{ t.priority }}</td>
+                                <td>{{ t.project.name if t.project_id and t.project else 'No project' }}</td>
+                                <td>{{ t.assignee.username if t.assigned_to and t.assignee else 'Unassigned' }}</td>
+                                <td>{{ t.due_date.strftime('%Y-%m-%d') if t.due_date else '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="stats-bar">
+                <strong>Statistics:</strong>
+                Total: {{ stats.total }} | Completed: {{ stats.completed }} | Pending: {{ stats.pending }} | High priority: {{ stats.high_priority }} | Overdue: {{ stats.overdue }}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'projects' %}
+        <section class="tab-panel active">
+            <h2>Project Management</h2>
+            <div class="card form-card">
+                <h3>New / Edit Project</h3>
+                <form method="post" action="{{ url_for('project_add') }}" id="projectForm">
+                    <input type="hidden" name="project_id" id="projectIdField" value="">
+                    <div class="form-group">
+                        <label for="project_name">Name *</label>
+                        <input type="text" id="project_name" name="project_name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="project_description">Description</label>
+                        <textarea id="project_description" name="project_description" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="projectAddBtn">Add</button>
+                        <button type="button" class="btn btn-secondary" onclick="submitProjectUpdate()">Update</button>
+                        <button type="button" class="btn btn-danger" onclick="submitProjectDelete()">Delete</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in projects %}
+                        <tr class="project-row" data-project-id="{{ p.id }}" data-project-name="{{ p.name }}" data-project-description="{{ p.description or '' }}" onclick="selectProjectRow(this)">
+                            <td>{{ p.id }}</td>
+                            <td>{{ p.name }}</td>
+                            <td>{{ p.description or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'comments' %}
+        <section class="tab-panel active">
+            <h2>Task Comments</h2>
+            <div class="card form-card">
+                <form method="post" action="{{ url_for('comment_add') }}">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="comment_task_id">Task ID</label>
+                            <input type="number" id="comment_task_id" name="comment_task_id" min="1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="comment_text">Comment</label>
+                        <textarea id="comment_text" name="comment_text" rows="3" required></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Add Comment</button>
+                        <button type="button" class="btn btn-secondary" onclick="loadComments()">Load Comments</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <h3>Comments</h3>
+                <pre id="commentsArea" class="output-area"></pre>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'history' %}
+        <section class="tab-panel active">
+            <h2>Change History</h2>
+            <div class="card form-card">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="history_task_id">Task ID (optional)</label>
+                        <input type="number" id="history_task_id" name="history_task_id" min="1" placeholder="Empty = all">
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" onclick="loadHistory()">Load History</button>
+                    <button type="button" class="btn btn-secondary" onclick="loadAllHistory()">Load All</button>
+                </div>
+            </div>
+            <div class="card">
+                <pre id="historyArea" class="output-area"></pre>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'notifications' %}
+        <section class="tab-panel active">
+            <h2>Notifications</h2>
+            <div class="card form-card">
+                <form method="post" action="{{ url_for('notifications_mark_read') }}">
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="loadNotifications()">Load Notifications</button>
+                        <button type="submit" class="btn btn-primary">Mark as Read</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card">
+                <pre id="notificationsArea" class="output-area"></pre>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'search' %}
+        <section class="tab-panel active">
+            <h2>Advanced Search</h2>
+            <div class="card form-card">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="search_text">Text</label>
+                        <input type="text" id="search_text" placeholder="Search in title/description">
+                    </div>
+                    <div class="form-group">
+                        <label for="search_status">Status</label>
+                        <select id="search_status">
+                            <option value="">All</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search_priority">Priority</label>
+                        <select id="search_priority">
+                            <option value="">All</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search_project_id">Project</label>
+                        <select id="search_project_id">
+                            <option value="0">All</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" onclick="searchTasks()">Search</button>
+                </div>
+            </div>
+            <div class="card table-card">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Title</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Project</th>
+                        </tr>
+                    </thead>
+                    <tbody id="searchTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if tab == 'reports' %}
+        <section class="tab-panel active">
+            <h2>Reports</h2>
+            <div class="card form-card">
+                <div class="form-actions">
+                    <button type="button" class="btn btn-primary" onclick="generateReport('tasks')">Tasks Report</button>
+                    <button type="button" class="btn btn-primary" onclick="generateReport('projects')">Projects Report</button>
+                    <button type="button" class="btn btn-primary" onclick="generateReport('users')">Users Report</button>
+                    <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">Export CSV</a>
+                </div>
+            </div>
+            <div class="card">
+                <pre id="reportsArea" class="output-area"></pre>
+            </div>
+        </section>
+        {% endif %}
+    </main>
+</div>
+
+<form id="taskDeleteForm" method="post" action="" style="display:none;"></form>
+<form id="projectDeleteForm" method="post" action="" style="display:none;"></form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BASE = "{{ url_for('dashboard') }}";
+const TASK_UPDATE_URL = (id) => "{{ url_for('task_update', task_id=0) }}".replace("0", String(id));
+const TASK_DELETE_URL = (id) => "{{ url_for('task_delete', task_id=0) }}".replace("0", String(id));
+const PROJECT_UPDATE_URL = (id) => "{{ url_for('project_update', project_id=0) }}".replace("0", String(id));
+const PROJECT_DELETE_URL = (id) => "{{ url_for('project_delete', project_id=0) }}".replace("0", String(id));
+const API_TASK = (id) => "{{ url_for('api_task', task_id=0) }}".replace("0", String(id));
+const API_COMMENTS = (id) => "{{ url_for('api_comments', task_id=0) }}".replace("0", String(id));
+const API_HISTORY = "{{ url_for('api_history') }}";
+const API_HISTORY_TASK = (id) => "{{ url_for('api_history', task_id=0) }}".replace("0", String(id));
+const API_NOTIFICATIONS = "{{ url_for('api_notifications') }}";
+const API_SEARCH = "{{ url_for('api_search') }}";
+const API_REPORT = (t) => "{{ url_for('api_report', report_type='_') }}".replace("_", t);
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
