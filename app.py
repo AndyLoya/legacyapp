@@ -25,14 +25,39 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
 
 
+# Max lengths for text fields (must match frontend maxlength)
+MAX_TITLE = 100
+MAX_DESCRIPTION = 5000
+MAX_PROJECT_NAME = 80
+MAX_PROJECT_DESCRIPTION = 2000
+MAX_COMMENT = 3000
+MAX_SEARCH = 200
+MAX_HOURS = 999
+MIN_HOURS = 0
+OBJECTID_HEX_LEN = 24
+
+
 def _oid(s):
     """Convert string to ObjectId; return None if invalid."""
     if not s:
+        return None
+    s = s.strip()
+    if len(s) != OBJECTID_HEX_LEN or not all(c in "0123456789abcdefABCDEF" for c in s):
         return None
     try:
         return ObjectId(s)
     except Exception:
         return None
+
+
+def _validate_length(s, max_len, field_name):
+    """Return (True, s) if len(s) <= max_len, else (False, error_message)."""
+    if s is None:
+        s = ""
+    s = s.strip() if isinstance(s, str) else str(s)
+    if len(s) > max_len:
+        return False, f"{field_name} must be at most {max_len} characters (got {len(s)})."
+    return True, s
 
 
 def _date_for_mongo(d):
@@ -190,7 +215,9 @@ def _compute_stats(tasks):
     for t in tasks:
         dd = t.get("due_date")
         if dd and t.get("status") != "Completed":
-            if isinstance(dd, date):
+            if isinstance(dd, datetime):
+                d = dd.date()
+            elif isinstance(dd, date):
                 d = dd
             else:
                 try:
@@ -213,9 +240,26 @@ def _compute_stats(tasks):
 @app.route("/task/add", methods=["POST"])
 @login_required
 def task_add():
-    title = request.form.get("task_title", "").strip()
+    title_raw = request.form.get("task_title", "").strip()
+    ok, title = _validate_length(title_raw, MAX_TITLE, "Title")
+    if not ok:
+        flash(title, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
     if not title:
         flash("Title is required.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    desc_raw = request.form.get("task_description", "")
+    ok, description = _validate_length(desc_raw, MAX_DESCRIPTION, "Description")
+    if not ok:
+        flash(description, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    try:
+        hours_val = float(request.form.get("task_hours") or 0)
+        if not (MIN_HOURS <= hours_val <= MAX_HOURS):
+            flash(f"Estimated hours must be between {MIN_HOURS} and {MAX_HOURS}.", "error")
+            return redirect(url_for("dashboard", tab="tasks"))
+    except (TypeError, ValueError):
+        flash("Estimated hours must be a number between 0 and 999.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
     try:
         due = request.form.get("task_due_date")
@@ -230,13 +274,13 @@ def task_add():
     now = datetime.utcnow()
     task_doc = {
         "title": title,
-        "description": request.form.get("task_description", ""),
+        "description": description,
         "status": request.form.get("task_status", "Pending"),
         "priority": request.form.get("task_priority", "Medium"),
         "project_id": project_id,
         "assigned_to": assigned_to,
         "due_date": _date_for_mongo(due_date),
-        "estimated_hours": float(request.form.get("task_hours") or 0),
+        "estimated_hours": hours_val,
         "actual_hours": 0,
         "created_by": user["_id"],
         "created_at": now,
@@ -262,9 +306,26 @@ def task_update(task_id):
     if not task:
         flash("Task not found.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
-    title = request.form.get("task_title", "").strip()
+    title_raw = request.form.get("task_title", "").strip()
+    ok, title = _validate_length(title_raw, MAX_TITLE, "Title")
+    if not ok:
+        flash(title, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
     if not title:
         flash("Title is required.", "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    desc_raw = request.form.get("task_description", "")
+    ok, description = _validate_length(desc_raw, MAX_DESCRIPTION, "Description")
+    if not ok:
+        flash(description, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
+    try:
+        hours_val = float(request.form.get("task_hours") or 0)
+        if not (MIN_HOURS <= hours_val <= MAX_HOURS):
+            flash(f"Estimated hours must be between {MIN_HOURS} and {MAX_HOURS}.", "error")
+            return redirect(url_for("dashboard", tab="tasks"))
+    except (TypeError, ValueError):
+        flash("Estimated hours must be a number between 0 and 999.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
     try:
         due = request.form.get("task_due_date")
@@ -284,13 +345,13 @@ def task_update(task_id):
         {
             "$set": {
                 "title": title,
-                "description": request.form.get("task_description", ""),
+                "description": description,
                 "status": request.form.get("task_status", "Pending"),
                 "priority": request.form.get("task_priority", "Medium"),
                 "project_id": project_id,
                 "assigned_to": assigned_to,
                 "due_date": _date_for_mongo(due_date),
-                "estimated_hours": float(request.form.get("task_hours") or 0),
+                "estimated_hours": hours_val,
                 "updated_at": datetime.utcnow(),
             }
         },
@@ -328,13 +389,22 @@ def task_delete(task_id):
 @app.route("/project/add", methods=["POST"])
 @login_required
 def project_add():
-    name = request.form.get("project_name", "").strip()
+    name_raw = request.form.get("project_name", "").strip()
+    ok, name = _validate_length(name_raw, MAX_PROJECT_NAME, "Project name")
+    if not ok:
+        flash(name, "error")
+        return redirect(url_for("dashboard", tab="projects"))
     if not name:
         flash("Project name is required.", "error")
         return redirect(url_for("dashboard", tab="projects"))
+    desc_raw = request.form.get("project_description", "")
+    ok, description = _validate_length(desc_raw, MAX_PROJECT_DESCRIPTION, "Project description")
+    if not ok:
+        flash(description, "error")
+        return redirect(url_for("dashboard", tab="projects"))
     get_db().projects.insert_one({
         "name": name,
-        "description": request.form.get("project_description", ""),
+        "description": description,
     })
     flash("Project created.", "success")
     return redirect(url_for("dashboard", tab="projects"))
@@ -351,13 +421,22 @@ def project_update(project_id):
     if not project:
         flash("Project not found.", "error")
         return redirect(url_for("dashboard", tab="projects"))
-    name = request.form.get("project_name", "").strip()
+    name_raw = request.form.get("project_name", "").strip()
+    ok, name = _validate_length(name_raw, MAX_PROJECT_NAME, "Project name")
+    if not ok:
+        flash(name, "error")
+        return redirect(url_for("dashboard", tab="projects"))
     if not name:
         flash("Name is required.", "error")
         return redirect(url_for("dashboard", tab="projects"))
+    desc_raw = request.form.get("project_description", "")
+    ok, description = _validate_length(desc_raw, MAX_PROJECT_DESCRIPTION, "Project description")
+    if not ok:
+        flash(description, "error")
+        return redirect(url_for("dashboard", tab="projects"))
     get_db().projects.update_one(
         {"_id": oid},
-        {"$set": {"name": name, "description": request.form.get("project_description", "")}},
+        {"$set": {"name": name, "description": description}},
     )
     flash("Project updated.", "success")
     return redirect(url_for("dashboard", tab="projects"))
@@ -386,9 +465,13 @@ def comment_add():
     except Exception:
         oid = None
     if not oid:
-        flash("Invalid task ID.", "error")
+        flash("Invalid task ID (must be 24 hex characters).", "error")
         return redirect(url_for("dashboard", tab="comments"))
-    text = request.form.get("comment_text", "").strip()
+    text_raw = request.form.get("comment_text", "").strip()
+    ok, text = _validate_length(text_raw, MAX_COMMENT, "Comment text")
+    if not ok:
+        flash(text, "error")
+        return redirect(url_for("dashboard", tab="comments"))
     if not text:
         flash("Comment cannot be empty.", "error")
         return redirect(url_for("dashboard", tab="comments"))
@@ -514,7 +597,10 @@ def api_notifications():
 @login_required
 def api_search():
     q_filter = {}
-    q = request.args.get("q", "").strip().lower()
+    q_raw = request.args.get("q", "").strip().lower()
+    ok, q = _validate_length(q_raw, MAX_SEARCH, "Search text")
+    if not ok:
+        return jsonify({"error": q}), 400
     if q:
         q_filter["$or"] = [
             {"title": {"$regex": q, "$options": "i"}},
