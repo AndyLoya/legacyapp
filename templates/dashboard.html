@@ -18,6 +18,9 @@
         <a href="{{ url_for('dashboard', tab='notifications') }}" class="tab-link {% if tab == 'notifications' %}active{% endif %}">Notifications</a>
         <a href="{{ url_for('dashboard', tab='search') }}" class="tab-link {% if tab == 'search' %}active{% endif %}">Search</a>
         <a href="{{ url_for('dashboard', tab='reports') }}" class="tab-link {% if tab == 'reports' %}active{% endif %}">Reports</a>
+        {% if is_admin %}
+        <a href="{{ url_for('dashboard', tab='users') }}" class="tab-link {% if tab == 'users' %}active{% endif %}">Users</a>
+        {% endif %}
     </nav>
 
     <main class="app-main">
@@ -329,11 +332,61 @@
             </div>
         </section>
         {% endif %}
+
+        {% if tab == 'users' and is_admin %}
+        <section class="tab-panel active">
+            <h2>User Management</h2>
+            <div class="card form-card">
+                <h3>New / Edit User</h3>
+                <form method="post" action="{{ url_for('user_add') }}" id="userForm">
+                    <input type="hidden" name="user_id" id="userIdField" value="">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="user_username">Username * (max {{ max_username }})</label>
+                            <input type="text" id="user_username" name="user_username" maxlength="30" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="user_password">Password (max 64)</label>
+                        <input type="password" id="user_password" name="user_password" maxlength="64" placeholder="Required when adding; blank = keep current">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary" id="userAddBtn" onclick="submitUserAdd()">Add</button>
+                        <button type="button" class="btn btn-secondary" onclick="submitUserUpdate()">Update</button>
+                        <button type="button" class="btn btn-danger" onclick="submitUserDelete()">Delete</button>
+                        <button type="button" class="btn btn-ghost" onclick="clearUserForm()">Clear</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card table-card">
+                <h3>User List</h3>
+                <div class="table-wrap">
+                    <table class="data-table table-users">
+                        <thead>
+                            <tr>
+                                <th class="col-id">ID</th>
+                                <th class="col-name">Username</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in users %}
+                            <tr class="user-row" data-user-id="{{ u.id }}" data-user-username="{{ u.username }}" onclick="selectUserRow(this)">
+                                <td>{{ u.id }}</td>
+                                <td>{{ u.username }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        {% endif %}
     </main>
 </div>
 
 <form id="taskDeleteForm" method="post" action="" style="display:none;"></form>
 <form id="projectDeleteForm" method="post" action="" style="display:none;"></form>
+<form id="userDeleteForm" method="post" action="" style="display:none;"></form>
 {% endblock %}
 
 {% block scripts %}
@@ -343,6 +396,9 @@ const TASK_UPDATE_URL = (id) => "{{ url_for('task_update', task_id=0) }}".replac
 const TASK_DELETE_URL = (id) => "{{ url_for('task_delete', task_id=0) }}".replace("0", String(id));
 const PROJECT_UPDATE_URL = (id) => "{{ url_for('project_update', project_id=0) }}".replace("0", String(id));
 const PROJECT_DELETE_URL = (id) => "{{ url_for('project_delete', project_id=0) }}".replace("0", String(id));
+const USER_ADD_URL = "{{ url_for('user_add') }}";
+const USER_UPDATE_URL = (id) => "{{ url_for('user_update', user_id=0) }}".replace("0", String(id));
+const USER_DELETE_URL = (id) => "{{ url_for('user_delete', user_id=0) }}".replace("0", String(id));
 const API_TASK = (id) => "{{ url_for('api_task', task_id=0) }}".replace("0", String(id));
 const API_COMMENTS = (id) => "{{ url_for('api_comments', task_id=0) }}".replace("0", String(id));
 const API_HISTORY = "{{ url_for('api_history') }}";

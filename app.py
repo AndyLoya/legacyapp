@@ -30,6 +30,8 @@ MAX_TITLE = 100
 MAX_DESCRIPTION = 5000
 MAX_PROJECT_NAME = 80
 MAX_PROJECT_DESCRIPTION = 2000
+MAX_USERNAME = 30
+MAX_PASSWORD = 64
 MAX_COMMENT = 3000
 MAX_SEARCH = 200
 MAX_HOURS = 999
@@ -104,6 +106,21 @@ def login_required(f):
     return wrapped
 
 
+def admin_required(f):
+    """Decorator: require logged-in admin (username 'admin')."""
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        user = get_current_user()
+        if user is None:
+            flash("Please sign in to continue.", "error")
+            return redirect(url_for("login"))
+        if user.get("username") != "admin":
+            flash("Admin access required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return wrapped
+
+
 @app.context_processor
 def inject_current_user():
     """Inject current_user into all templates."""
@@ -164,6 +181,10 @@ def index():
 @login_required
 def dashboard():
     tab = request.args.get("tab", "tasks")
+    current = get_current_user()
+    is_admin = current and current.get("username") == "admin"
+    if tab == "users" and not is_admin:
+        return redirect(url_for("dashboard", tab="tasks"))
     db = get_db()
     projects_cursor = db.projects.find().sort("name", 1)
     projects = [_doc_with_id(p) for p in projects_cursor]
@@ -178,6 +199,9 @@ def dashboard():
         users=users,
         tasks=tasks,
         stats=stats,
+        is_admin=is_admin,
+        max_username=MAX_USERNAME,
+        max_password=MAX_PASSWORD,
     )
 
 
@@ -474,6 +498,93 @@ def project_delete(project_id):
     get_db().projects.delete_one({"_id": oid})
     flash("Project deleted.", "success")
     return redirect(url_for("dashboard", tab="projects"))
+
+
+# ---------- Users (admin only) ----------
+
+@app.route("/user/add", methods=["POST"])
+@login_required
+@admin_required
+def user_add():
+    username_raw = request.form.get("user_username", "").strip()
+    ok, username = _validate_length(username_raw, MAX_USERNAME, "Username")
+    if not ok:
+        flash(username, "error")
+        return redirect(url_for("dashboard", tab="users"))
+    if not username:
+        flash("Username is required.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    if get_db().users.find_one({"username": username}):
+        flash("Username already in use.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    password_raw = request.form.get("user_password", "")
+    if not password_raw:
+        flash("Password is required for new user.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    ok, password = _validate_length(password_raw, MAX_PASSWORD, "Password")
+    if not ok:
+        flash(password, "error")
+        return redirect(url_for("dashboard", tab="users"))
+    get_db().users.insert_one({"username": username, "password": password})
+    flash("User created.", "success")
+    return redirect(url_for("dashboard", tab="users"))
+
+
+@app.route("/user/update/<user_id>", methods=["POST"])
+@login_required
+@admin_required
+def user_update(user_id):
+    oid = _oid(user_id)
+    if not oid:
+        flash("Invalid user.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    user = get_db().users.find_one({"_id": oid})
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    username_raw = request.form.get("user_username", "").strip()
+    ok, username = _validate_length(username_raw, MAX_USERNAME, "Username")
+    if not ok:
+        flash(username, "error")
+        return redirect(url_for("dashboard", tab="users"))
+    if not username:
+        flash("Username is required.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    existing = get_db().users.find_one({"username": username, "_id": {"$ne": oid}})
+    if existing:
+        flash("Username already in use.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    update_fields = {"username": username}
+    password_raw = request.form.get("user_password", "")
+    if password_raw:
+        ok, password = _validate_length(password_raw, MAX_PASSWORD, "Password")
+        if not ok:
+            flash(password, "error")
+            return redirect(url_for("dashboard", tab="users"))
+        update_fields["password"] = password
+    get_db().users.update_one({"_id": oid}, {"$set": update_fields})
+    flash("User updated.", "success")
+    return redirect(url_for("dashboard", tab="users"))
+
+
+@app.route("/user/delete/<user_id>", methods=["POST"])
+@login_required
+@admin_required
+def user_delete(user_id):
+    oid = _oid(user_id)
+    if not oid:
+        flash("Invalid user.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    user = get_db().users.find_one({"_id": oid})
+    if not user:
+        flash("User not found.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    if user.get("username") == "admin":
+        flash("Cannot delete the admin user.", "error")
+        return redirect(url_for("dashboard", tab="users"))
+    get_db().users.delete_one({"_id": oid})
+    flash("User deleted.", "success")
+    return redirect(url_for("dashboard", tab="users"))
 
 
 # ---------- Comments ----------

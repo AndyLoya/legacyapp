@@ -99,6 +99,65 @@ function submitProjectDelete() {
   form.submit();
 }
 
+let selectedUserId = null;
+
+function submitUserAdd() {
+  const username = document.getElementById("user_username").value.trim();
+  const password = document.getElementById("user_password").value;
+  if (!username) {
+    alert("Username is required.");
+    return;
+  }
+  if (!password) {
+    alert("Password is required for new user.");
+    return;
+  }
+  document.getElementById("userIdField").value = "";
+  const form = document.getElementById("userForm");
+  if (form) {
+    form.action = USER_ADD_URL;
+    form.submit();
+  }
+}
+
+function selectUserRow(row) {
+  selectedUserId = row.dataset.userId || null;
+  document.getElementById("user_username").value = row.dataset.userUsername || "";
+  document.getElementById("user_password").value = "";
+  document.getElementById("userIdField").value = selectedUserId || "";
+  document.querySelectorAll(".user-row").forEach((r) => r.classList.remove("selected"));
+  row.classList.add("selected");
+}
+
+function submitUserUpdate() {
+  if (!selectedUserId) {
+    alert("Select a user from the table");
+    return;
+  }
+  const form = document.getElementById("userForm");
+  form.action = USER_UPDATE_URL(selectedUserId);
+  form.submit();
+}
+
+function submitUserDelete() {
+  if (!selectedUserId) {
+    alert("Select a user");
+    return;
+  }
+  if (!confirm("Delete this user?")) return;
+  const form = document.getElementById("userDeleteForm");
+  form.action = USER_DELETE_URL(selectedUserId);
+  form.submit();
+}
+
+function clearUserForm() {
+  selectedUserId = null;
+  document.getElementById("user_username").value = "";
+  document.getElementById("user_password").value = "";
+  document.getElementById("userIdField").value = "";
+  document.querySelectorAll(".user-row").forEach((r) => r.classList.remove("selected"));
+}
+
 (function () {
   document.addEventListener("click", function (e) {
     if (!e.target.classList.contains("btn-desc-toggle")) return;
