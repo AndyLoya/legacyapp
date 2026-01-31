@@ -65,7 +65,7 @@ function clearTaskForm() {
 })();
 
 function selectProjectRow(row) {
-  selectedProjectId = parseInt(row.dataset.projectId, 10);
+  selectedProjectId = row.dataset.projectId || null;
   document.getElementById("project_name").value = row.dataset.projectName || "";
   document.getElementById("project_description").value = row.dataset.projectDescription || "";
   document.querySelectorAll(".project-row").forEach((r) => r.classList.remove("selected"));
