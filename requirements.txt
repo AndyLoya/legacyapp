@@ -3,3 +3,4 @@ pymongo>=4.0
 dnspython>=2.0
 python-dotenv>=1.0
 Werkzeug>=2.2
+gunicorn>=21.0

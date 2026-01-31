@@ -896,4 +896,6 @@ if __name__ == "__main__":
         print("  Example (MongoDB Atlas): MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster.mongodb.net/taskmanager", file=sys.stderr)
         print("  Example (local):         MONGODB_URI=mongodb://localhost:27017/taskmanager  (requires MongoDB running)\n", file=sys.stderr)
         sys.exit(1)
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
+    app.run(host="0.0.0.0", debug=debug, port=port)

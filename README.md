@@ -148,12 +148,39 @@ taskmanager/
 
 ---
 
+## Deploy on Render
+
+The app is ready to deploy on [Render](https://render.com) as a Web Service.
+
+1. **Push your code** to a Git repository (e.g. GitHub).
+
+2. In the [Render Dashboard](https://dashboard.render.com), click **New > Web Service** and connect your repo.
+
+3. **Configure the service:**
+
+   | Setting | Value |
+   |--------|--------|
+   | **Language** | Python 3 |
+   | **Build Command** | `pip install -r requirements.txt` |
+   | **Start Command** | `gunicorn app:app` |
+
+4. **Environment variables** (in Render: Environment tab):
+
+   - **MONGODB_URI** (required) — Your MongoDB connection string. Use [MongoDB Atlas](https://www.mongodb.com/atlas) and set the URI; allow access from anywhere (`0.0.0.0/0`) in Atlas Network Access if needed.
+   - **SECRET_KEY** (recommended) — A long random string for session security.
+
+5. **Deploy.** Render will build and run the app; it will be available at `https://<your-service>.onrender.com`.
+
+**Note:** Render free tier spins down after inactivity; the first request after idle may be slow. For always-on hosting, use a paid plan.
+
+---
+
 ## Production Notes
 
 - Set a strong, random `SECRET_KEY` in the environment.
-- Use a production WSGI server (e.g. **Gunicorn** with a reverse proxy) instead of the built-in Flask server.
+- On Render, the app runs with **Gunicorn** via the start command above.
 - Ensure MongoDB is secured (authentication, network access) and use TLS for connections when possible.
-- Consider running the app over HTTPS.
+- Render provides HTTPS for your service.
 
 ---
 
@@ -161,8 +188,8 @@ taskmanager/
 
 | Issue | What to check |
 |-------|----------------|
-| **"Cannot connect to MongoDB"** | Ensure MongoDB is running (local) or that `MONGODB_URI` is correct and the Atlas cluster allows your IP. |
-| **Port 5000 in use** | Edit `app.py` and change the port in `app.run(debug=True, port=5000)` or set the `PORT` environment variable if your runner supports it. |
+| **"Cannot connect to MongoDB"** | Ensure MongoDB is running (local) or that `MONGODB_URI` is correct and the Atlas cluster allows your IP (or `0.0.0.0/0` for Render). |
+| **Port 5000 in use** | Set the `PORT` environment variable; the app uses it when provided (e.g. on Render). |
 | **Module not found** | Activate the virtual environment and run `pip install -r requirements.txt` again. |
 
 ---
