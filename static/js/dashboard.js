@@ -19,29 +19,6 @@ function selectTask(id) {
       document.querySelectorAll(".task-row").forEach((r) => r.classList.remove("selected"));
       const row = document.querySelector(`.task-row[data-task-id="${id}"]`);
       if (row) row.classList.add("selected");
-      const deleteBtn = document.getElementById("taskDeleteBtn");
-      const updateBtn = document.getElementById("taskUpdateBtn");
-      const notice = document.getElementById("taskPermissionNotice");
-      const canEdit = IS_ADMIN ||
-        (task.created_by && task.created_by === CURRENT_USER_ID) ||
-        (task.assigned_to && task.assigned_to === CURRENT_USER_ID);
-      const canDelete = IS_ADMIN || (task.created_by && task.created_by === CURRENT_USER_ID);
-      if (deleteBtn) deleteBtn.disabled = !canDelete;
-      if (updateBtn) updateBtn.disabled = !canEdit;
-      if (notice) {
-        if (!canEdit && !canDelete) {
-          notice.hidden = false;
-          notice.textContent = "You don't have permission to edit or delete this task.";
-        } else if (!canEdit) {
-          notice.hidden = false;
-          notice.textContent = "You don't have permission to edit this task.";
-        } else if (!canDelete) {
-          notice.hidden = false;
-          notice.textContent = "You don't have permission to delete this task.";
-        } else {
-          notice.hidden = true;
-        }
-      }
     })
     .catch(() => alert("Error loading task"));
 }
@@ -80,12 +57,6 @@ function clearTaskForm() {
   document.querySelectorAll(".task-row").forEach((r) => r.classList.remove("selected"));
   const form = document.getElementById("taskForm");
   if (form) form.action = form.getAttribute("data-add-action") || "";
-  const deleteBtn = document.getElementById("taskDeleteBtn");
-  const updateBtn = document.getElementById("taskUpdateBtn");
-  const notice = document.getElementById("taskPermissionNotice");
-  if (deleteBtn) deleteBtn.disabled = true;
-  if (updateBtn) updateBtn.disabled = true;
-  if (notice) notice.hidden = true;
 }
 
 (function () {

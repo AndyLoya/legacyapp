@@ -352,15 +352,6 @@ def task_update(task_id):
     if not task:
         flash("Task not found.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
-    user = get_current_user()
-    is_admin = user and user.get("username") == "admin"
-    if not is_admin:
-        created_by = task.get("created_by")
-        assigned_to = task.get("assigned_to")
-        user_id = user["_id"]
-        if created_by != user_id and assigned_to != user_id:
-            flash("You can only edit tasks you created or are assigned to.", "error")
-            return redirect(url_for("dashboard", tab="tasks"))
     title_raw = request.form.get("task_title", "").strip()
     ok, title = _validate_length(title_raw, MAX_TITLE, "Title")
     if not ok:
@@ -436,13 +427,6 @@ def task_delete(task_id):
     if not task:
         flash("Task not found.", "error")
         return redirect(url_for("dashboard", tab="tasks"))
-    user = get_current_user()
-    is_admin = user and user.get("username") == "admin"
-    if not is_admin:
-        task_creator = task.get("created_by")
-        if task_creator is None or task_creator != user["_id"]:
-            flash("You can only delete your own tasks.", "error")
-            return redirect(url_for("dashboard", tab="tasks"))
     title = task.get("title", "")
     _add_history(oid, "DELETED", title, "")
     get_db().tasks.delete_one({"_id": oid})
