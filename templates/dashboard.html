@@ -110,7 +110,7 @@
                         </thead>
                         <tbody>
                             {% for t in tasks %}
-                            <tr class="task-row" data-task-id="{{ t.id }}" onclick="selectTask({{ t.id | tojson }})">
+                            <tr class="task-row" data-task-id="{{ t.id }}" onclick="selectTask(this.dataset.taskId)">
                                 <td>{{ t.id }}</td>
                                 <td>{{ t.title }}</td>
                                 <td><span class="badge badge-{{ t.status | lower | replace(' ', '-') }}">{{ t.status }}</span></td>
