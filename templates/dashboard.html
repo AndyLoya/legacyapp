@@ -97,9 +97,12 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary" id="taskSubmitBtn">Add</button>
-                        <button type="button" class="btn btn-secondary" onclick="submitTaskUpdate()">Update</button>
-                        <button type="button" class="btn btn-danger" onclick="submitTaskDelete()">Delete</button>
+                        <button type="button" class="btn btn-secondary" id="taskUpdateBtn" onclick="submitTaskUpdate()" disabled>Update</button>
+                        <button type="button" class="btn btn-danger" id="taskDeleteBtn" onclick="submitTaskDelete()" disabled>Delete</button>
                         <button type="button" class="btn btn-ghost" onclick="clearTaskForm()">Clear</button>
+                    </div>
+                    <div class="task-permission-notice" id="taskPermissionNotice" hidden role="alert">
+                        You don't have permission to edit or delete this task.
                     </div>
                 </form>
             </div>
@@ -437,6 +440,8 @@ const API_HISTORY_TASK = (id) => "{{ url_for('api_history', task_id=0) }}".repla
 const API_NOTIFICATIONS = "{{ url_for('api_notifications') }}";
 const API_SEARCH = "{{ url_for('api_search') }}";
 const API_REPORT = (t) => "{{ url_for('api_report', report_type='_') }}".replace("_", t);
+const CURRENT_USER_ID = "{{ current_user_id }}";
+const IS_ADMIN = {% if is_admin %}true{% else %}false{% endif %};
 </script>
 <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 <script>

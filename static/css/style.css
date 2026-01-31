@@ -452,6 +452,19 @@ body {
   margin-top: 20px;
 }
 
+.task-permission-notice {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+}
+
+.task-permission-notice[hidden] {
+  display: none;
+}
+
 /* Tables */
 .table-wrap {
   overflow-x: auto;
