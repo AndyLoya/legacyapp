@@ -2,7 +2,7 @@
 import os
 import csv
 import io
-from datetime import datetime, date
+from datetime import datetime, date, time
 from functools import wraps
 
 from bson import ObjectId
@@ -33,6 +33,15 @@ def _oid(s):
         return ObjectId(s)
     except Exception:
         return None
+
+
+def _date_for_mongo(d):
+    """Convert date to datetime for BSON (MongoDB does not support date type)."""
+    if d is None:
+        return None
+    if isinstance(d, datetime):
+        return d
+    return datetime.combine(d, time(0, 0, 0))
 
 
 def get_current_user():
@@ -226,7 +235,7 @@ def task_add():
         "priority": request.form.get("task_priority", "Medium"),
         "project_id": project_id,
         "assigned_to": assigned_to,
-        "due_date": due_date,
+        "due_date": _date_for_mongo(due_date),
         "estimated_hours": float(request.form.get("task_hours") or 0),
         "actual_hours": 0,
         "created_by": user["_id"],
@@ -262,6 +271,8 @@ def task_update(task_id):
         due_date = datetime.strptime(due, "%Y-%m-%d").date() if due else None
     except ValueError:
         due_date = task.get("due_date")
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
     raw_project = request.form.get("task_project_id") or ""
     raw_assigned = request.form.get("task_assigned_to") or ""
     project_id = _oid(raw_project)
@@ -278,7 +289,7 @@ def task_update(task_id):
                 "priority": request.form.get("task_priority", "Medium"),
                 "project_id": project_id,
                 "assigned_to": assigned_to,
-                "due_date": due_date,
+                "due_date": _date_for_mongo(due_date),
                 "estimated_hours": float(request.form.get("task_hours") or 0),
                 "updated_at": datetime.utcnow(),
             }
