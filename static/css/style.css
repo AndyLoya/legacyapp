@@ -229,6 +229,98 @@ body {
   color: var(--text-muted);
 }
 
+.user-menu-wrap {
+  position: relative;
+}
+
+.user-name-btn {
+  font: inherit;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: var(--radius);
+  transition: color 0.2s, background 0.2s;
+}
+
+.user-name-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.user-name-btn[aria-expanded="true"] {
+  color: var(--primary);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 6px 0;
+  z-index: 100;
+}
+
+.user-dropdown[hidden] {
+  display: none;
+}
+
+.user-dropdown-item {
+  display: block;
+  padding: 8px 14px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: background 0.15s;
+}
+
+.user-dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.user-dropdown-item:first-child {
+  border-radius: 0;
+}
+
+/* Change password modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.modal-title {
+  margin: 0 0 20px 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* Tabs */
 .tabs-nav {
   display: flex;

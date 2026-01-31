@@ -587,6 +587,33 @@ def user_delete(user_id):
     return redirect(url_for("dashboard", tab="users"))
 
 
+@app.route("/user/change-password", methods=["POST"])
+@login_required
+def user_change_password():
+    user = get_current_user()
+    if not user:
+        flash("Please sign in to continue.", "error")
+        return redirect(url_for("login"))
+    current_password = request.form.get("current_password", "")
+    new_password = request.form.get("new_password", "")
+    if not current_password:
+        flash("Current password is required.", "error")
+        return redirect(url_for("dashboard"))
+    if get_db().users.find_one({"_id": user["_id"], "password": current_password}) is None:
+        flash("Current password is incorrect.", "error")
+        return redirect(url_for("dashboard"))
+    if not new_password:
+        flash("New password is required.", "error")
+        return redirect(url_for("dashboard"))
+    ok, new_password = _validate_length(new_password, MAX_PASSWORD, "New password")
+    if not ok:
+        flash(new_password, "error")
+        return redirect(url_for("dashboard"))
+    get_db().users.update_one({"_id": user["_id"]}, {"$set": {"password": new_password}})
+    flash("Password updated.", "success")
+    return redirect(url_for("dashboard"))
+
+
 # ---------- Comments ----------
 
 @app.route("/comment/add", methods=["POST"])

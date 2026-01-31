@@ -5,8 +5,15 @@
     <header class="app-header">
         <div class="header-brand">Task Manager</div>
         <div class="header-user">
-            <span class="user-name">{{ current_user.username }}</span>
-            <a href="{{ url_for('logout') }}" class="btn btn-ghost">Log out</a>
+            <div class="user-menu-wrap">
+                <button type="button" class="user-name-btn" id="userNameBtn" aria-expanded="false" aria-haspopup="true" title="Account options">
+                    {{ current_user.username }}
+                </button>
+                <div class="user-dropdown" id="userDropdown" hidden>
+                    <a href="#" class="user-dropdown-item" id="changePasswordLink">Change password</a>
+                    <a href="{{ url_for('logout') }}" class="user-dropdown-item">Log out</a>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -387,6 +394,30 @@
 <form id="taskDeleteForm" method="post" action="" style="display:none;"></form>
 <form id="projectDeleteForm" method="post" action="" style="display:none;"></form>
 <form id="userDeleteForm" method="post" action="" style="display:none;"></form>
+
+<div class="modal-overlay" id="changePasswordModal" hidden aria-modal="true" role="dialog" aria-labelledby="changePasswordTitle">
+    <div class="modal-card">
+        <h3 class="modal-title" id="changePasswordTitle">Change password</h3>
+        <form method="post" action="{{ url_for('user_change_password') }}" id="changePasswordForm">
+            <div class="form-group">
+                <label for="current_password">Current password</label>
+                <input type="password" id="current_password" name="current_password" maxlength="64" required autocomplete="current-password">
+            </div>
+            <div class="form-group">
+                <label for="new_password">New password (max 64)</label>
+                <input type="password" id="new_password" name="new_password" maxlength="64" required autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label for="new_password_confirm">Confirm new password</label>
+                <input type="password" id="new_password_confirm" name="new_password_confirm" maxlength="64" required autocomplete="new-password">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Update password</button>
+                <button type="button" class="btn btn-ghost" id="changePasswordCancel">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -449,6 +480,80 @@ const API_REPORT = (t) => "{{ url_for('api_report', report_type='_') }}".replace
     });
   }
   allowNumericDecimalOnly(document.getElementById("task_hours"));
+
+  // User menu dropdown and change-password modal
+  var userNameBtn = document.getElementById("userNameBtn");
+  var userDropdown = document.getElementById("userDropdown");
+  var changePasswordLink = document.getElementById("changePasswordLink");
+  var changePasswordModal = document.getElementById("changePasswordModal");
+  var changePasswordCancel = document.getElementById("changePasswordCancel");
+  var changePasswordForm = document.getElementById("changePasswordForm");
+
+  function closeUserDropdown() {
+    if (userDropdown) {
+      userDropdown.hidden = true;
+      if (userNameBtn) userNameBtn.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function openChangePasswordModal() {
+    closeUserDropdown();
+    if (changePasswordModal) {
+      changePasswordModal.hidden = false;
+      var firstInput = document.getElementById("current_password");
+      if (firstInput) firstInput.focus();
+    }
+  }
+
+  function closeChangePasswordModal() {
+    if (changePasswordModal) {
+      changePasswordModal.hidden = true;
+      if (changePasswordForm) changePasswordForm.reset();
+    }
+  }
+
+  if (userNameBtn && userDropdown) {
+    userNameBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      userDropdown.hidden = !userDropdown.hidden;
+      userNameBtn.setAttribute("aria-expanded", userDropdown.hidden ? "false" : "true");
+    });
+    userDropdown.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+  }
+
+  document.addEventListener("click", function () {
+    closeUserDropdown();
+  });
+
+  if (changePasswordLink) {
+    changePasswordLink.addEventListener("click", function (e) {
+      e.preventDefault();
+      openChangePasswordModal();
+    });
+  }
+
+  if (changePasswordModal) {
+    changePasswordModal.addEventListener("click", function (e) {
+      if (e.target === changePasswordModal) closeChangePasswordModal();
+    });
+  }
+
+  if (changePasswordCancel) {
+    changePasswordCancel.addEventListener("click", closeChangePasswordModal);
+  }
+
+  if (changePasswordForm) {
+    changePasswordForm.addEventListener("submit", function (e) {
+      var newPw = document.getElementById("new_password").value;
+      var confirmPw = document.getElementById("new_password_confirm").value;
+      if (newPw !== confirmPw) {
+        e.preventDefault();
+        alert("New password and confirmation do not match.");
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}
