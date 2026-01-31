@@ -1,21 +1,49 @@
 # Task Manager
 
-A web-based task and project management application built with **Flask** and **MongoDB**. Manage tasks, projects, comments, and user accounts from a single dashboard.
+A web-based task and project management application built with **Flask** and **MongoDB**. This is the **migrated version** of the original *Task Manager Simple* (JavaScript + localStorage): same functionality, now with a server, database, and multi-user support.
+
+---
+
+## Migration from Original (JavaScript / localStorage)
+
+The original app was a **client-only** system (HTML, CSS, JavaScript) using **localStorage**. This version **migrates** all features to a **Flask backend** with **MongoDB**, so the app runs on a server and data is shared across users and devices.
+
+| Original (JavaScript) | Migrated (Flask + MongoDB) |
+|-----------------------|----------------------------|
+| No server, runs in browser | Flask server + MongoDB |
+| localStorage as database | MongoDB as database |
+| Open `index.html` in browser | Run server, open URL in browser |
+| Default login: admin / admin | Same: admin / admin (and user1, user2) |
+
+**Feature parity — all original functionalities are implemented:**
+
+| Original feature | Status in this version |
+|------------------|------------------------|
+| **Authentication** — Login with multiple users | ✅ Login, sessions, multiple users |
+| **CRUD Tasks** — Create, read, update, delete tasks | ✅ Full task CRUD with status, priority, due date, assignment |
+| **CRUD Projects** — Manage projects | ✅ Full project CRUD |
+| **Comments** — Comments on tasks | ✅ Comments per task |
+| **History & audit** — Change log | ✅ Task change history |
+| **Notifications** — Per-user notifications | ✅ Notifications (updates, assignments) |
+| **Advanced search** — Multiple filters | ✅ Search by text, status, priority, project |
+| **Reports** — Tasks, projects, users | ✅ Reports + export CSV |
+| **Export CSV** | ✅ Export tasks to CSV |
+
+**Additional in this version:** User management (admin), change-own-password, deployable (e.g. Render).
 
 ---
 
 ## Features
 
-- **Task Management** — Create, edit, and delete tasks with title, description, status, priority, due date, and assignment
-- **Project Management** — Organize tasks by project with expandable descriptions
+- **Task Management** — Create, edit, and delete tasks (title, description, status, priority, due date, assignment)
+- **Project Management** — Organize tasks by project; expandable descriptions in table
 - **Comments** — Add comments to tasks
-- **Change History** — View task change history
+- **Change History** — View task change history and audit log
 - **Notifications** — In-app notifications for task updates and assignments
 - **Search** — Filter tasks by text, status, priority, and project
 - **Reports** — Generate tasks, projects, and users reports; export to CSV
 - **User Management (Admin)** — Admin users can create, edit, and delete users (username/password)
 - **Profile** — Any user can change their own password from the header menu
-- **Permissions** — Users can only edit/delete tasks they created or are assigned to; admins have full access
 
 ---
 
@@ -116,11 +144,15 @@ Open **http://127.0.0.1:5000** in your browser.
 
 On first run, the app seeds the database with default data if collections are empty.
 
+**Default users** (same as the original app):
+
 | Username | Password | Role  |
 |----------|----------|-------|
 | `admin`  | `admin`   | Admin (full access, user management) |
 | `user1`  | `user1`   | User  |
 | `user2`  | `user2`   | User  |
+
+**Default projects:** Demo Project, Alpha Project, Beta Project (with sample descriptions).
 
 **Change the default passwords** after first login (admin can change any user; all users can change their own password via the header menu).
 
