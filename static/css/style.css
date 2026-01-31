@@ -482,7 +482,6 @@ body {
 .data-table.table-projects .col-name { width: 180px; }
 .data-table.table-projects .col-desc { min-width: 0; }
 
-.data-table.table-users .col-id { width: 80px; }
 .data-table.table-users .col-name { min-width: 120px; }
 
 .cell-desc .btn-desc-toggle {

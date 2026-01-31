@@ -371,14 +371,12 @@
                     <table class="data-table table-users">
                         <thead>
                             <tr>
-                                <th class="col-id">ID</th>
                                 <th class="col-name">Username</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for u in users %}
                             <tr class="user-row" data-user-id="{{ u.id }}" data-user-username="{{ u.username }}" onclick="selectUserRow(this)">
-                                <td>{{ u.id }}</td>
                                 <td>{{ u.username }}</td>
                             </tr>
                             {% endfor %}
