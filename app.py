@@ -2,7 +2,7 @@
 import os
 import csv
 import io
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from functools import wraps
 
 from bson import ObjectId
@@ -35,6 +35,7 @@ MAX_SEARCH = 200
 MAX_HOURS = 999
 MIN_HOURS = 0
 OBJECTID_HEX_LEN = 24
+DUE_DATE_MAX_YEARS = 20
 
 
 def _oid(s):
@@ -58,6 +59,19 @@ def _validate_length(s, max_len, field_name):
     if len(s) > max_len:
         return False, f"{field_name} must be at most {max_len} characters (got {len(s)})."
     return True, s
+
+
+def _validate_due_date(due_date):
+    """Return (True, due_date) or (False, error_message). Due date must be None or between today and today+20 years."""
+    if due_date is None:
+        return True, None
+    today = date.today()
+    max_date = today + timedelta(days=365 * DUE_DATE_MAX_YEARS)
+    if due_date < today:
+        return False, "Due date cannot be in the past."
+    if due_date > max_date:
+        return False, f"Due date cannot be more than {DUE_DATE_MAX_YEARS} years in the future."
+    return True, due_date
 
 
 def _date_for_mongo(d):
@@ -266,6 +280,10 @@ def task_add():
         due_date = datetime.strptime(due, "%Y-%m-%d").date() if due else None
     except ValueError:
         due_date = None
+    ok, due_date = _validate_due_date(due_date)
+    if not ok:
+        flash(due_date, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
     raw_project = request.form.get("task_project_id") or ""
     raw_assigned = request.form.get("task_assigned_to") or ""
     project_id = _oid(raw_project)
@@ -334,6 +352,10 @@ def task_update(task_id):
         due_date = task.get("due_date")
         if isinstance(due_date, datetime):
             due_date = due_date.date()
+    ok, due_date = _validate_due_date(due_date)
+    if not ok:
+        flash(due_date, "error")
+        return redirect(url_for("dashboard", tab="tasks"))
     raw_project = request.form.get("task_project_id") or ""
     raw_assigned = request.form.get("task_assigned_to") or ""
     project_id = _oid(raw_project)
