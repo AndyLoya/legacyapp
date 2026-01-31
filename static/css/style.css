@@ -363,6 +363,7 @@ body {
 /* Tables */
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .data-table {
@@ -376,6 +377,32 @@ body {
   padding: 12px 14px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Projects table: fixed layout so description column wraps instead of overflowing */
+.data-table.table-projects {
+  table-layout: fixed;
+}
+
+.data-table.table-projects .col-id { width: 80px; }
+.data-table.table-projects .col-name { width: 180px; }
+.data-table.table-projects .col-desc { min-width: 0; }
+
+.cell-desc .btn-desc-toggle {
+  margin-left: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--primary, #2563eb);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.cell-desc .btn-desc-toggle:hover {
+  color: var(--primary-hover, #1d4ed8);
 }
 
 .data-table th {

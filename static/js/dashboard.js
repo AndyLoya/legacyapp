@@ -99,6 +99,30 @@ function submitProjectDelete() {
   form.submit();
 }
 
+(function () {
+  document.addEventListener("click", function (e) {
+    if (!e.target.classList.contains("btn-desc-toggle")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const td = e.target.closest("td.cell-desc");
+    if (!td) return;
+    const short = td.querySelector(".desc-short");
+    const ellipsis = td.querySelector(".desc-ellipsis");
+    const more = td.querySelector(".desc-more");
+    const btn = e.target;
+    if (!short || !more) return;
+    if (more.style.display === "none") {
+      more.style.display = "inline";
+      if (ellipsis) ellipsis.style.display = "none";
+      btn.textContent = "Show less";
+    } else {
+      more.style.display = "none";
+      if (ellipsis) ellipsis.style.display = "inline";
+      btn.textContent = "Show more";
+    }
+  }, true);
+})();
+
 function loadComments() {
   const taskId = document.getElementById("comment_task_id").value.trim();
   const area = document.getElementById("commentsArea");

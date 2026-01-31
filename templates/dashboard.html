@@ -154,24 +154,36 @@
                 </form>
             </div>
             <div class="card table-card">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Description</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for p in projects %}
-                        <tr class="project-row" data-project-id="{{ p.id }}" data-project-name="{{ p.name }}" data-project-description="{{ p.description or '' }}" onclick="selectProjectRow(this)">
-                            <td>{{ p.id }}</td>
-                            <td>{{ p.name }}</td>
-                            <td>{{ p.description or '—' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="table-wrap">
+                    <table class="data-table table-projects">
+                        <thead>
+                            <tr>
+                                <th class="col-id">ID</th>
+                                <th class="col-name">Name</th>
+                                <th class="col-desc">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in projects %}
+                            {% set desc = p.description or '—' %}
+                            <tr class="project-row" data-project-id="{{ p.id }}" data-project-name="{{ p.name }}" data-project-description="{{ p.description or '' }}" onclick="selectProjectRow(this)">
+                                <td>{{ p.id }}</td>
+                                <td>{{ p.name }}</td>
+                                <td class="cell-desc">
+                                    {% if desc|length > 90 %}
+                                    <span class="desc-short">{{ (desc[:90]|e) }}</span>
+                                    <span class="desc-ellipsis">...</span>
+                                    <span class="desc-more" style="display:none">{{ (desc[90:]|e) }}</span>
+                                    <button type="button" class="btn-desc-toggle">Show more</button>
+                                    {% else %}
+                                    {{ (desc|e) }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
         {% endif %}
